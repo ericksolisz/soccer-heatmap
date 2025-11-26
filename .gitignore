@@ -1,0 +1,5 @@
+*.pt
+
+models/
+debug/
+runs/

@@ -21,7 +21,7 @@ Homography estimation
 Top-down pitch projection & heatmap accumulation
 
 📁 Project Structure
-.
+
 ├── input_videos/
 │   └── test_2.mp4
 ├── models/

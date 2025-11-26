@@ -1,43 +1,38 @@
-📌 README.md — Single-Player Heatmap Generator from Broadcast Football Video
-🟧 Single-Player Heatmap Generator
-Broadcast Football Video → Player Tracking → Homography → Heatmap
+# Single-Player Heatmap Generator  
+### Broadcast Football Video → Player Tracking → Homography → Heatmap
 
-This project implements a full single-camera football analysis system that extracts the trajectory of one selected player from broadcast footage and generates a top-down heatmap of their movement throughout the clip.
+This project implements a complete single-camera computer vision pipeline that extracts a single player's trajectory from a broadcast football match and generates a top-down movement heatmap.
 
-It combines:
+It uses a combination of:
 
-YOLOv8 (player detection)
+- YOLOv8 for player detection  
+- ByteTrack for multi-object tracking  
+- A Rolling-Pivot CLIP ViT module to stabilize player identity  
+- CLAHE + Canny + Hough for field-line enhancement  
+- A YOLOv8 keypoint detector for field intersections  
+- Homography estimation to map frame coordinates to pitch coordinates  
+- A top-down pitch renderer and density-based heatmap generator  
 
-ByteTrack (multi-object temporal tracking)
+---
 
-CLIP Vision Transformer (Rolling-Pivot identity stabilization)
+## Project Structure
 
-Image preprocessing (CLAHE, Canny, Hough)
-
-YOLOv8 field-keypoint model
-
-Homography estimation
-
-Top-down pitch projection & heatmap accumulation
-
-📁 Project Structure
-
+```
+.
 ├── input_videos/
 │   └── test_2.mp4
 ├── models/
-│   ├── tracker/best.pt               # YOLOv8 player-tracking model  (NOT INCLUDED)
-│   ├── field_keypoints/best.pt       # YOLOv8 keypoint model         (NOT INCLUDED)
-│   └── clip/                         # CLIP ViT downloaded automatically
+│   ├── tracker/best.pt               # YOLOv8 player-tracker (NOT INCLUDED)
+│   ├── field_keypoints/best.pt       # YOLOv8 field keypoint model (NOT INCLUDED)
+│   └── clip/                         # CLIP ViT downloads automatically
 ├── tracker/
-│   ├── tracker.py
-│   └── __init__.py
+│   └── tracker.py
 ├── selection/
 │   ├── rolling_pivot_selector.py
 │   ├── single_player_selector.py
 │   └── __init__.py
 ├── appearance/
-│   ├── clip_encoder.py
-│   └── __init__.py
+│   └── clip_encoder.py
 ├── utils/
 │   ├── video_utils.py
 │   ├── map_utils.py
@@ -52,7 +47,7 @@ Top-down pitch projection & heatmap accumulation
 │   └── ...
 ├── stubs/
 │   ├── tracks_stub.pkl
-│   └── field_keypoints_stub.pkl
+│   ├── field_keypoints_stub.pkl
 ├── output_videos/
 │   ├── output_annotated.avi
 │   ├── output_single_player_rolling_clip.avi
@@ -61,178 +56,139 @@ Top-down pitch projection & heatmap accumulation
 │   └── VitTests.ipynb
 ├── main.py
 └── README.md
+```
 
-⚠️ Missing Files (IMPORTANT)
+---
 
-This repository does not include trained YOLO models due to size restrictions.
+## Important: Missing Models
 
-You must manually download and place:
+The YOLO models **are not included** in this repository for size reasons.
 
-Model	Expected Path	Purpose
-best.pt	models/tracker/best.pt	YOLOv8 model to detect players, goalkeepers, referees and the ball
-best.pt	models/field_keypoints/best.pt	YOLOv8 model to detect field line intersections for homography
+You must provide these files:
 
-If these files are missing, the pipeline will not run.
+| Required Model | Expected Path | Description |
+|----------------|---------------|-------------|
+| `best.pt` | `models/tracker/best.pt` | YOLOv8 model trained to detect players/referees/goalkeepers/ball |
+| `best.pt` | `models/field_keypoints/best.pt` | YOLOv8 model trained to detect field intersections for homography |
 
-🔧 Installation
-1. Create environment
+Without these files the pipeline will not run.
+
+---
+
+## Installation
+
+### Create environment
+
+```bash
 conda create -n heatmap python=3.10
 conda activate heatmap
+```
 
-2. Install dependencies
+### Install dependencies
+
+```bash
 pip install ultralytics supervision opencv-python numpy matplotlib tqdm transformers pillow scipy
+```
 
+CLIP ViT will be downloaded automatically on first run.
 
-CLIP ViT will download automatically on first run.
+---
 
-▶️ Running the system
+## Running the System
 
-Simply run:
+Run:
 
+```bash
 python main.py
+```
 
+The following outputs will appear in `output_videos/`:
 
-The following outputs will be generated inside /output_videos/:
+| File | Description |
+|------|-------------|
+| `output_annotated.avi` | Broadcast video with YOLOv8 detections + ByteTrack |
+| `output_single_player_rolling_clip.avi` | Only the selected player using ViT stabilization |
+| `final_single_player_dual_view.avi` | Side-by-side broadcast + top-down radar view |
+| `heatmap_single_player.png` | Final spatial density heatmap |
 
-Output file	Description
-output_annotated.avi	YOLOv8 detections + ByteTrack ellipses
-output_single_player_rolling_clip.avi	Only the selected player (Rolling-Pivot CLIP)
-final_single_player_dual_view.avi	Broadcast + top-down radar side-by-side
-heatmap_single_player.png	Final heatmap image of the player's movement
-🧠 Pipeline Overview
-1. Player Detection & Tracking
+---
 
-YOLOv8 detects players, referees, goalkeepers and ball.
+## Pipeline Overview
 
-ByteTrack assigns track IDs per frame.
+### 1. Player Detection & Tracking
+- YOLOv8 detects players, referees, goalkeepers and the ball  
+- ByteTrack assigns temporal IDs  
 
-2. Rolling-Pivot CLIP ViT Identity Stabilization
-
-A ViT-B/32 encoder generates embeddings for each player crop.
-
-This solves:
-
-ID switches
-
-Occlusions
-
-Fast motion
-
-Merges & splits
+### 2. Rolling-Pivot CLIP ViT Identity Stabilization
+Solves:
+- ID switches  
+- Occlusions  
+- Player overlap  
+- Fast movement  
 
 Mechanism:
+1. Extract embedding of the selected player (global anchor).  
+2. Maintain a rolling anchor updated each frame.  
+3. If YOLO/ByteTrack loses the player, search nearby candidates.  
+4. Select highest cosine similarity (CLIP ViT-B/32).  
+5. After N missing frames, allow smooth identity switch.  
 
-Select initial player (anchor frame & track ID).
+### 3. Field Keypoint Detection & Homography
+- CLAHE → Canny → Hough for line enhancement  
+- YOLOv8 keypoint model predicts pitch intersections  
+- RANSAC computes homography (frame → pitch coordinates)  
 
-Extract global anchor embedding with CLIP.
+### 4. Heatmap Generation
+1. Convert bbox → player foot coordinate  
+2. Project to pitch  
+3. Accumulate trajectory  
+4. Render Gaussian density over a pitch template  
 
-Each new valid match updates a rolling anchor.
+Final output: **a clean 2D heatmap of player movement**  
 
-If YOLO/ByteTrack loses the player →
-use CLIP to select the most similar nearby detection.
+---
 
-After N missing frames → ID can smoothly switch.
+## Ablation Study (Summary)
 
-This provides a stable logical identity even when tracking fails.
+### Field-line preprocessing
 
-🎯 Field Keypoint Detection & Homography
+| Method | Valid Keypoints | Homography Accuracy |
+|--------|-----------------|---------------------|
+| Raw Frame | 68% | 88% |
+| CLAHE + Sobel | 82% | 93% |
+| CLAHE + Canny + Hough | **91%** | **97%** |
 
-The pitch is detected using:
+### Tracking Stability
 
-CLAHE (contrast enhancement)
+| Metric | Baseline | Rolling-Pivot ViT |
+|--------|----------|-------------------|
+| Missing frames | 34 | **8** |
+| Avg center jump | 29.1 px | **12.4 px** |
+| ID switches | 5 | **1** |
+| Recovered occlusions | 0% | **92%** |
 
-Canny edges
+---
 
-Hough lines
+## Limitations
 
-YOLOv8 keypoint model (field intersections)
+- Ball detection is still challenging at long distances  
+- Homography depends on field-line visibility  
+- Tracks only a single player per sequence  
+- Broadcast zooming may distort pitch geometry  
 
-Homography is computed using RANSAC:
+---
 
-(image_x, image_y) → (pitch_x, pitch_y)
+## Future Work
 
+- Multi-player & team-level heatmaps  
+- Better ball detection  
+- Real-time version (GPU-only)  
+- Optical-flow smoothing  
+- Automatic player-of-interest selection  
 
-This enables:
+---
 
-Metric trajectories
-
-Heatmap spatial accuracy
-
-True pitch-coordinate visualization
-
-🔥 Heatmap Generation
-
-Convert bbox → player foot position
-
-Project point to pitch
-
-Accumulate over time
-
-Draw pitch + gaussian density map
-
-Overlay current position (dual-view mode)
-
-The user gets a clean 2D density heatmap of player movement.
-
-📈 Ablation Study (Provided in Poster)
-
-The project includes experiments comparing:
-
-Preprocessing methods
-
-Raw
-
-CLAHE + Sobel
-
-CLAHE + Canny + Hough
-
-Tracking stability
-
-Baseline ByteTrack only
-
-Rolling-Pivot CLIP ViT
-
-Metrics evaluated:
-
-Valid keypoints
-
-Homography accuracy
-
-Missing frames
-
-Center jump
-
-ID switches
-
-Recovered occlusions
-
-💡 Notes & Limitations
-
-This system tracks only one player at a time.
-
-Ball detection is not fully robust (small object limitation).
-
-Homography depends heavily on field-line visibility.
-
-Broadcast zooming can introduce metric distortions.
-
-📌 Future Work
-
-Multi-player & team-level heatmaps
-
-Automatic player-of-interest selection
-
-Better ball detector
-
-Optical-flow smoothing of ground-truth trajectory
-
-Real-time version (GPU-only pipeline)
-
-🤝 Contributing
-
-Pull requests are welcome.
-For major changes, please open an issue first to discuss your proposal.
-
-📄 License
+## License
 
 MIT License.
+

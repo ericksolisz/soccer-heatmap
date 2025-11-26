@@ -8,7 +8,7 @@ import time
 
 from pitch_projection.view_transformer import ViewTransformer
 from field.config import CONFIG
-from field.draw import draw_pitch, draw_points_on_pitch  # si quieres, también draw_paths_on_pitch
+from field.draw import draw_pitch, draw_points_on_pitch 
 
 import numpy as np
 import pickle
